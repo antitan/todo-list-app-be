@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Serilog;
 using ToDoList.EntityFramework;
 
 namespace ToDoList
@@ -28,6 +29,10 @@ namespace ToDoList
                 });
             });
 
+            builder.Host.UseSerilog((context, configuration) =>
+                configuration.ReadFrom.Configuration(context.Configuration));
+
+
             var app = builder.Build();
 
            
@@ -47,22 +52,7 @@ namespace ToDoList
             app.MapControllers();
 
             // Fallback React: toutes les routes non-API -> index.html
-            app.MapFallbackToFile("index.html");
-
-            using (var scope = app.Services.CreateScope())
-            {
-                var services = scope.ServiceProvider;
-                try
-                {
-                    var context = services.GetRequiredService<AppDbContext>(); // Remplacez par le nom de votre DbContext
-                    context.Database.Migrate();
-                }
-                catch (Exception ex)
-                {
-                    var logger = services.GetRequiredService<ILogger<Program>>();
-                    logger.LogError(ex, "Une erreur est survenue lors de la migration de la base de données.");
-                }
-            }
+            app.MapFallbackToFile("index.html"); 
 
             app.Run();
 

@@ -9,10 +9,11 @@ using ToDoList.EntityFramework.Entities;
 public sealed class TodosController : ControllerBase
 {
     private readonly AppDbContext _db;
-
-    public TodosController(AppDbContext db)
+    private readonly ILogger<TodosController> _loggger;
+    public TodosController(AppDbContext db,ILogger<TodosController> loggger)
     {
         _db = db;
+        _loggger = loggger;
     }
 
     [HttpGet("lists")]
@@ -21,81 +22,114 @@ public sealed class TodosController : ControllerBase
       [FromQuery] int pageSize = 20,
       CancellationToken cancellationToken = default)
     { 
-        page = page < 1 ? 1 : page;
-        pageSize = pageSize < 1 ? 5 : pageSize;
-
-        var query = _db.Todos.AsNoTracking();
-
-        var total = await query.CountAsync(cancellationToken);
-
-        var items = await query
-            .OrderBy(t => t.Id)
-            .Skip((page - 1) * pageSize)
-            .Take(pageSize)
-            .Select(t => new TodoDto
-            {
-                Id = t.Id,
-                Title = t.Title,
-                Completed = t.Completed
-            })
-            .ToListAsync(cancellationToken);
-
-        return Ok(new
+        try
         {
-            items,
-            total,
-            page,
-            pageSize
-        });
+            page = page < 1 ? 1 : page;
+            pageSize = pageSize < 1 ? 20 : pageSize;
+
+            var query = _db.Todos.AsNoTracking();
+
+            var total = await query.CountAsync(cancellationToken);
+
+            var items = await query
+                .OrderBy(t => t.Id)
+                .Skip((page - 1) * pageSize)
+                .Take(pageSize)
+                .Select(t => new TodoDto
+                {
+                    Id = t.Id,
+                    Title = t.Title,
+                    Completed = t.Completed
+                })
+                .ToListAsync(cancellationToken);
+
+            return Ok(new
+            {
+                items,
+                total,
+                page,
+                pageSize
+            });
+        }
+        catch (Exception ex)
+        {
+            _loggger.LogError(ex, "An error occurred while retrieving todos");
+            return StatusCode(500, $"An error occurred while retrieving todos :  {ex}");
+        }
+       
     }
 
 
     [HttpPost("add")]
     public async Task<ActionResult<TodoDto>> AddTodo([FromBody] CreateTodoRequest request, CancellationToken cancellationToken)
-    { 
-        if (string.IsNullOrWhiteSpace(request.Title))
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(request.Title))
             return BadRequest("Title is required.");
 
-        var entity = new TodoItem
+            var entity = new TodoItem
+            {
+                Title = request.Title.Trim(),
+                Completed = false
+            };
+
+            _db.Todos.Add(entity);
+            await _db.SaveChangesAsync(cancellationToken);
+
+            var dto = new TodoDto { Id = entity.Id, Title = entity.Title, Completed = entity.Completed };
+            return Ok(dto);
+        }
+        catch (Exception ex)
         {
-            Title = request.Title.Trim(),
-            Completed = false
-        };
-
-        _db.Todos.Add(entity);
-        await _db.SaveChangesAsync(cancellationToken);
-
-        var dto = new TodoDto { Id = entity.Id, Title = entity.Title, Completed = entity.Completed };
-        return Ok(dto);
+            _loggger.LogError(ex, "An error occurred while add todos");
+            return StatusCode(500, $"An error occurred while add todos :  {ex}");
+        }
     }
      
     [HttpPost("update-status")]
     public async Task<ActionResult<TodoDto>> UpdateStatus([FromBody] UpdateTodoStatusRequest request, CancellationToken cancellationToken)
     {
-        var entity = await _db.Todos
+        try
+        {
+            var entity = await _db.Todos
             .FirstOrDefaultAsync(t => t.Id == request.Id, cancellationToken);
 
         if (entity is null)
             return NotFound();
 
-        entity.Completed = request.Completed;
-        await _db.SaveChangesAsync(cancellationToken);
-        var dto = new TodoDto { Id = entity.Id, Title = entity.Title, Completed = entity.Completed };
-        return Ok(dto);
+            entity.Completed = request.Completed;
+            await _db.SaveChangesAsync(cancellationToken);
+            var dto = new TodoDto { Id = entity.Id, Title = entity.Title, Completed = entity.Completed };
+            return Ok(dto);
+        }
+        catch (Exception ex)
+        {
+            _loggger.LogError(ex, "An error occurred while update status");
+            return StatusCode(500, $"An error occurred while update status :  {ex}");
+        }
     }
      
     [HttpDelete("delete")]
     public async Task<IActionResult> Delete([FromQuery] int id, CancellationToken cancellationToken)
     {
-        var entity = await _db.Todos
+        try
+        {
+            var entity = await _db.Todos
             .FirstOrDefaultAsync(t => t.Id == id, cancellationToken);
 
-        if (entity is null)
-            return NotFound();
+            if (entity is null)
+                return NotFound();
 
-        _db.Todos.Remove(entity);
-        await _db.SaveChangesAsync(cancellationToken);
+            _db.Todos.Remove(entity);
+            await _db.SaveChangesAsync(cancellationToken);
 
-        return NoContent();
+            return NoContent();
+        }
+        catch (Exception ex)
+        {
+            _loggger.LogError(ex, "An error occurred while Delete Todo ");
+            return StatusCode(500, $"An error occurred while Delete Todo :  {ex}");
+        }
     }
 }
